@@ -191,7 +191,7 @@ export class UI {
         this.gameOverContainer.addChild(restartText);
     }
 
-    // ── Métodos públicos ──────────────────────────────────────
+    // ── Métodos públicos ─────────────────────────────────────
 
     /**
      * Actualiza el contador de manzanas en el HUD (modo 1 jugador).
