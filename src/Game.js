@@ -228,10 +228,10 @@ export class Game {
 
             // Jugador 1: WASD o flechas
             switch (e.code) {
-                case 'ArrowUp':    case 'KeyW': this.snake.setDirection(DIRECTION.UP);    break;
-                case 'ArrowDown':  case 'KeyS': this.snake.setDirection(DIRECTION.DOWN);  break;
-                case 'ArrowLeft':  case 'KeyA': this.snake.setDirection(DIRECTION.LEFT);  break;
-                case 'ArrowRight': case 'KeyD': this.snake.setDirection(DIRECTION.RIGHT); break;
+                case 'KeyW': this.snake.setDirection(DIRECTION.UP);    break;
+                case 'KeyS': this.snake.setDirection(DIRECTION.DOWN);  break;
+                case 'KeyA': this.snake.setDirection(DIRECTION.LEFT);  break;
+                case 'KeyD': this.snake.setDirection(DIRECTION.RIGHT); break;
             }
 
             // Jugador 2: IJKL (solo en modo 2 jugadores)
@@ -292,87 +292,94 @@ export class Game {
         // Procesar todos los ticks pendientes (por si el frame tardó mucho)
         while (this.timeSinceLastMove >= MOVE_INTERVAL) {
             this.timeSinceLastMove -= MOVE_INTERVAL;
-            this.tick();
 
-            // Si el tick terminó el juego, salir del loop
-            if (this.state !== STATE.PLAYING) return;
-        }
+            // ── TICK DE LÓGICA ────────────────────────────────
+            
+            // Avanzar serpiente(s)
+            const ate1 = this.snake.move(this.apple);
+            if (ate1) this.score++;
 
-        // Calcular qué tan avanzado estamos dentro del tick actual (0 = recién empezó, 1 = a punto de terminar)
-        const progress = this.timeSinceLastMove / MOVE_INTERVAL;
-
-        // Actualizar posiciones visuales interpoladas
-        this.snake.render(progress);
-        if (this.snake2) this.snake2.render(progress);
-    }
-
-    /**
-     * Un paso de lógica de juego: mueve la serpiente, evalúa colisiones
-     * y verifica si comió la manzana.
-     * Llamado por update() una vez por MOVE_INTERVAL milisegundos.
-     */
-    tick() {
-        // En modo 2P la manzana no puede aparecer encima de ninguna serpiente
-        const allSegments = this.snake2
-            ? [...this.snake.segments, ...this.snake2.segments]
-            : this.snake.segments;
-
-        const ate1 = this.snake.move(this.apple);
-        const ate2 = this.snake2 ? this.snake2.move(this.apple) : false;
-
-        if (ate1) {
-            this.score++;
+            let ate2 = false;
             if (this.snake2) {
-                // Modo 2P: actualizar ambos scores
-                this.ui.updateScores(this.score, this.score2);
-            } else {
-                // Modo 1P: actualizar solo el score
-                this.ui.updateScore(this.score);
+                ate2 = this.snake2.move(this.apple);
+                if (ate2) this.score2++;
             }
 
-            // Reubicar la manzana en un lugar libre
-            this.apple.randomize(allSegments);
-        }
-
-        if (ate2) {
-            this.score2++;
-            this.ui.updateScores(this.score, this.score2);
-
-            // Reubicar la manzana en un lugar libre
-            this.apple.randomize(allSegments);
-        }
-
-        // Verificar colisión DESPUÉS de mover (la cabeza ya está en la nueva posición).
-        // En modo 2P se pasan los segmentos rivales para detectar colisión entre serpientes.
-        const dead1 = this.snake.checkCollision(
-            GRID_COLS, GRID_ROWS,
-            this.snake.wrap,
-            this.snake2 ? this.snake2.segments : []
-        );
-        const dead2 = this.snake2 && this.snake2.checkCollision(
-            GRID_COLS, GRID_ROWS,
-            this.snake2.wrap,
-            this.snake.segments
-        );
-
-        if (dead1 || dead2) {
-            this.state = STATE.GAME_OVER;
-
-            // En modo 2P determinar quién ganó.
-            // Si ambas mueren en el mismo tick es empate.
-            if (this.snake2) {
-                let winner;
-                if (dead1 && dead2) winner = 'Empate';
-                else if (dead1)     winner = 'Ganó Jugador 2';
-                else                winner = 'Ganó Jugador 1';
-                this.ui.showGameOver(this.score, winner, this.score2);
-            } else {
-                this.ui.showGameOver(this.score);
+            // Actualizar HUD si alguien comió
+            if (ate1 || ate2) {
+                if (this.snake2) {
+                    this.ui.updateScores(this.score, this.score2);
+                    this.apple.randomize([...this.snake.segments, ...this.snake2.segments]);
+                } else {
+                    this.ui.updateScore(this.score);
+                    this.apple.randomize(this.snake.segments);
+                }
             }
+
+            // Verificar colisiones
+            if (this.snake2) {
+                // ── MODO 2 JUGADORES ──────────────────────────
+                const head1 = this.snake.segments[0];
+                const head2 = this.snake2.segments[0];
+
+                // REGLA 1: Choque frontal de cabezas directo (se define por manzanas)
+                if (head1.x === head2.x && head1.y === head2.y) {
+                    let winnerText = '';
+                    if (this.score > this.score2) {
+                        winnerText = '¡Ganó el Jugador 1! (Más manzanas)';
+                    } else if (this.score2 > this.score) {
+                        winnerText = '¡Ganó el Jugador 2! (Más manzanas)';
+                    } else {
+                        winnerText = '¡Empate absoluto!';
+                    }
+                    this.state = STATE.GAME_OVER;
+                    this.ui.showGameOver(this.score, winnerText, this.score2);
+                    break;
+                }
+
+                // REGLA 2: Choque contra segmentos de cuerpos (K.O. directo, se ignora score)
+                const j1ChocoCuerpo = this.snake.checkCollision(GRID_COLS, GRID_ROWS, true, this.snake2.segments);
+                const j2ChocoCuerpo = this.snake2.checkCollision(GRID_COLS, GRID_ROWS, true, this.snake.segments);
+
+                if (j1ChocoCuerpo && j2ChocoCuerpo) {
+                    // Ambos se encerraron mutuamente en el mismo tick
+                    let winnerText = this.score === this.score2 ? '¡Empate absoluto!' : 
+                                     (this.score > this.score2 ? '¡Ganó el Jugador 1! (Más manzanas)' : '¡Ganó el Jugador 2! (Más manzanas)');
+                    this.state = STATE.GAME_OVER;
+                    this.ui.showGameOver(this.score, winnerText, this.score2);
+                    break;
+                } 
+                else if (j1ChocoCuerpo) {
+                    // Jugador 1 cometió la falta, gana Jugador 2 por supervivencia
+                    this.state = STATE.GAME_OVER;
+                    this.ui.showGameOver(this.score, '¡Ganó el Jugador 2!', this.score2);
+                    break;
+                } 
+                else if (j2ChocoCuerpo) {
+                    // Jugador 2 cometió la falta, gana Jugador 1 por supervivencia
+                    this.state = STATE.GAME_OVER;
+                    this.ui.showGameOver(this.score, '¡Ganó el Jugador 1!', this.score2);
+                    break;
+                }
+            } else {
+                // ── MODO 1 JUGADOR ────────────────────────────
+                if (this.snake.checkCollision(GRID_COLS, GRID_ROWS, false)) {
+                    this.state = STATE.GAME_OVER;
+                    this.ui.showGameOver(this.score);
+                    break;
+                }
+            }
+        }
+
+        // ── RENDER (Interpolación cuadro a cuadro) ────────────
+        if (this.state === STATE.PLAYING) {
+            const progress = this.timeSinceLastMove / MOVE_INTERVAL;
+            this.snake.render(progress);
+            if (this.snake2) this.snake2.render(progress);
         }
     }
 
-    /** Limpia todos los recursos cuando el Game ya no se necesita */
+    /** Remueve el loop del ticker al destruir el juego */
     destroy() {
         this.app.ticker.remove(this._onTick);
         this.clearScene();

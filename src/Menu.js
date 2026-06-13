@@ -52,7 +52,7 @@ export class Menu {
         this.container.addChild(subtitle);
 
         // Botón 1 jugador
-        this._addButton('1 Jugador', 'WASD / ↑↓←→', CANVAS_HEIGHT / 2 - 30, () => onSelect('1p'));
+        this._addButton('1 Jugador', 'WASD', CANVAS_HEIGHT / 2 - 30, () => onSelect('1p'));
 
         // Botón 2 jugadores
         this._addButton('2 Jugadores', 'J1: WASD   J2: IJKL', CANVAS_HEIGHT / 2 + 60, () => onSelect('2p'));

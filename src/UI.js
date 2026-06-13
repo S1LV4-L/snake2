@@ -55,7 +55,7 @@ export class UI {
 
             // Texto de ayuda con los controles (esquina derecha)
             const helpText = new Text({
-                text: 'WASD / ↑↓←→',
+                text: 'Moverse: W A S D',
                 style: {
                     fontFamily: 'Arial, sans-serif',
                     fontSize: 14,
@@ -231,6 +231,12 @@ export class UI {
             this.finalScoreText.text = `Manzanas comidas: ${score}`;
         }
         
+        // Empuja el contenedor de Game Over al final de la lista de hijos del stage,
+        // asegurando que se dibuje por encima de las serpientes u otros elementos dinámicos.
+        if (this.gameOverContainer.parent) {
+            this.gameOverContainer.parent.addChild(this.gameOverContainer);
+        }
+
         this.gameOverContainer.visible = true;
     }
 

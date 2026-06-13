@@ -38,18 +38,18 @@ export class Snake {
      * @param {number} startX - Posición inicial en la grilla (columna)
      * @param {number} startY - Posición inicial en la grilla (fila)
      * @param {{ wrap?: boolean, direction?: object, colors?: object }} options - Opciones de comportamiento
-     *   wrap:      si es true, la serpiente sale por el lado opuesto al salir del borde
-     *              (usado en modo 2 jugadores). Por defecto false (colisión con bordes).
-     *   direction: dirección inicial de movimiento. El cuerpo se genera en la dirección
-     *              opuesta para que no haya colisión inmediata. Por defecto DIRECTION.RIGHT.
-     *   colors:    objeto con { head, body } para colorear la serpiente. Por defecto GREEN.
+     * wrap:      si es true, la serpiente sale por el lado opuesto al salir del borde
+     * (usado en modo 2 jugadores). Por defecto false (colisión con bordes).
+     * direction: dirección inicial de movimiento. El cuerpo se genera en la dirección
+     * opuesta para que no haya colisión inmediata. Por defecto DIRECTION.RIGHT.
+     * colors:    objeto con { head, body } para colorear la serpiente. Por defecto GREEN.
      */
     constructor(stage, startX, startY, { wrap = false, direction = DIRECTION.RIGHT, colors = SNAKE_COLORS.GREEN } = {}) {
         /**
          * Array de segmentos, el índice 0 es la cabeza.
          * Cada segmento tiene:
-         *   x, y      → posición lógica actual (grilla)
-         *   prevX, prevY → posición lógica del tick anterior (para lerp)
+         * x, y      → posición lógica actual (grilla)
+         * prevX, prevY → posición lógica del tick anterior (para lerp)
          *
          * El cuerpo se genera en la dirección opuesta al movimiento inicial
          * para evitar colisión consigo misma en el primer tick.
@@ -188,9 +188,6 @@ export class Snake {
      * Llamado una vez por tick de juego (no cada frame).
      * Si this.wrap es true, aplica wrap de bordes en lugar de permitir colisión.
      *
-     * Cuando se aplica wrap, prevX/prevY de la cabeza se igualan a x/y para
-     * evitar que la interpolación visual atraviese todo el canvas en un frame.
-     *
      * @param {import('./Apple.js').Apple} apple - Manzana actual
      * @returns {boolean} true si la serpiente comió la manzana
      */
@@ -204,50 +201,34 @@ export class Snake {
         const newHeadX  = head.x + this.direction.x;
         const newHeadY  = head.y + this.direction.y;
 
-        // Guardar posición de la cola ANTES de mover, para saber dónde
-        // hacer crecer la serpiente si come la manzana en este tick.
         const lastSeg  = this.segments[this.segments.length - 1];
         const oldTailX = lastSeg.x;
         const oldTailY = lastSeg.y;
 
-        // Guardar la posición actual de todos los segmentos como "prev"
-        // (se usará en render() para interpolar la posición visual)
+        // Guardar prev NORMALMENTE
         for (const seg of this.segments) {
             seg.prevX = seg.x;
             seg.prevY = seg.y;
         }
 
-        // Cada segmento toma la posición del segmento que tiene delante
-        // (se recorre de atrás hacia adelante para no sobreescribir datos)
+        // Mover segmentos
         for (let i = this.segments.length - 1; i > 0; i--) {
             this.segments[i].x = this.segments[i - 1].x;
             this.segments[i].y = this.segments[i - 1].y;
         }
 
-        // La cabeza avanza en la dirección actual.
-        // Si wrap está activo, se aplica módulo para salir por el lado opuesto.
-        // El doble módulo maneja correctamente valores negativos (borde izquierdo/superior).
+        // Mover cabeza
         if (this.wrap) {
             this.segments[0].x = ((newHeadX % GRID_COLS) + GRID_COLS) % GRID_COLS;
             this.segments[0].y = ((newHeadY % GRID_ROWS) + GRID_ROWS) % GRID_ROWS;
-
-            // Si la cabeza cambió de lado, igualar prev a la posición nueva para
-            // que la interpolación no dibuje un trazo atravesando todo el canvas.
-            const wrappedX = this.segments[0].x !== newHeadX;
-            const wrappedY = this.segments[0].y !== newHeadY;
-            if (wrappedX) this.segments[0].prevX = this.segments[0].x;
-            if (wrappedY) this.segments[0].prevY = this.segments[0].y;
         } else {
             this.segments[0].x = newHeadX;
             this.segments[0].y = newHeadY;
         }
 
-        // Verificar si la cabeza llegó a la manzana
         const ateApple = (this.segments[0].x === apple.gridX && this.segments[0].y === apple.gridY);
 
         if (ateApple) {
-            // El nuevo segmento nace en la posición que tenía la cola antes
-            // de moverse, y se queda quieto este tick (prevX = x).
             this.segments.push({
                 x:     oldTailX,
                 y:     oldTailY,
@@ -259,6 +240,7 @@ export class Snake {
 
         return ateApple;
     }
+
 
     /**
      * Verifica si la serpiente chocó con los bordes, consigo misma,
@@ -312,9 +294,26 @@ export class Snake {
             const seg = this.segments[i];
             const g   = this.segmentGraphics[i];
 
+            let renderX = seg.x;
+            let renderY = seg.y;
+
+            // Si la distancia entre la posición lógica previa y la actual es mayor a 1,
+            // significa que este segmento en particular cruzó el borde debido al wrap.
+            const crossedX = Math.abs(seg.x - seg.prevX) > 1;
+            const crossedY = Math.abs(seg.y - seg.prevY) > 1;
+
+            // Si el segmento NO cruzó el borde, interpolamos normalmente.
+            // Si SÍ cruzó, evitamos el lerp usando directamente la posición final para que se teletransporte.
+            if (!crossedX) {
+                renderX = lerp(seg.prevX, seg.x, progress);
+            }
+            if (!crossedY) {
+                renderY = lerp(seg.prevY, seg.y, progress);
+            }
+
             // Interpolar la posición en píxeles
-            g.x = lerp(seg.prevX, seg.x, progress) * CELL_SIZE + CELL_SIZE / 2;
-            g.y = lerp(seg.prevY, seg.y, progress) * CELL_SIZE + CELL_SIZE / 2 + UI_HEIGHT;
+            g.x = renderX * CELL_SIZE + CELL_SIZE / 2;
+            g.y = renderY * CELL_SIZE + CELL_SIZE / 2 + UI_HEIGHT;
         }
     }
 
